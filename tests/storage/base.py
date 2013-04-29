@@ -658,3 +658,15 @@ class AlarmTest(DBTestBase):
         self.assertEquals(len(survivors), 2)
         for s in survivors:
             self.assertNotEquals(victim.name, s.name)
+
+
+class EventTestBase(test_db.TestBase):
+    __metaclass__ = abc.ABCMeta
+
+    def setUp(self):
+        super(EventTestBase, self).setUp()
+        self.prepare_data()
+
+    def prepare_data(self):
+        # Add some data ...
+        pass

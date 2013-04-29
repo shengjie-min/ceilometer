@@ -136,6 +136,17 @@ class Connection(object):
 
         The filter must have a meter value set.
         """
+    @abc.abstractmethod
+    def record_events(self, events):
+        """Write the events to the backend storage system.
+
+        :param events: a list of model.Event objects.
+        """
+
+    @abc.abstractmethod
+    def get_events(self, event_filter, period):
+        """Return an iterable of model.Event objects.
+        """
 
     @abc.abstractmethod
     def get_alarms(self, name=None, user=None,

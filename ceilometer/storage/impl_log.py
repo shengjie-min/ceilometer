@@ -160,3 +160,18 @@ class Connection(base.Connection):
     def delete_alarm(self, alarm_id):
         """Delete a alarm
         """
+
+    def record_events(self, events):
+        """Write the events to SQL database via sqlalchemy.
+
+        :param events: a list of model.Event objects.
+        """
+        pass
+
+    def get_events(self, event_filter, period):
+        """Return an iterable of model.Event objects.
+
+        :param event_filter: EventFilter instance
+        :param period: Tuple of UTC datetime ranges for results.
+        """
+        return []

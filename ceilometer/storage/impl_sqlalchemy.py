@@ -19,9 +19,12 @@
 
 from __future__ import absolute_import
 
+import calendar
 import copy
+import datetime
 import os
 from sqlalchemy import func
+import time
 
 from ceilometer.openstack.common import log
 from ceilometer.openstack.common import timeutils
@@ -29,8 +32,10 @@ from ceilometer.storage import base
 from ceilometer.storage import models as api_models
 from ceilometer.storage.sqlalchemy import migration
 from ceilometer.storage.sqlalchemy.models import Meter, Project, Resource
+from ceilometer.storage.sqlalchemy.models import UniqueName, Event, Trait
 from ceilometer.storage.sqlalchemy.models import Source, User, Base
 import ceilometer.storage.sqlalchemy.session as sqlalchemy_session
+
 
 LOG = log.getLogger(__name__)
 
@@ -94,7 +99,7 @@ class SQLAlchemyStorage(base.StorageEngine):
 def make_query_from_filter(query, sample_filter, require_meter=True):
     """Return a query dictionary based on the settings in the filter.
 
-    :param filter: QueryFilter instance
+    :param filter: SampleFilter instance
     :param require_meter: If true and the filter does not have a meter,
                           raise an error.
     """
@@ -427,3 +432,95 @@ class Connection(base.Connection):
         """Delete a alarm
         """
         raise NotImplementedError('Alarms not implemented')
+
+    def _get_unique_name(self, key):
+        """Find the UniqueName entry for a given key, creating
+           one if necessary.
+
+           This may result in a flush.
+        """
+        unique = self.session.query(UniqueName)\
+                     .filter(UniqueName.key == key).first()
+
+        if not unique:
+            unique = UniqueName(key=key)
+            self.session.add(unique)
+            self.session.flush()
+        return unique
+
+    def _dt_to_float(self, utc):
+        """Datetime to float.
+
+        Some databases don't store microseconds in datetime
+        so we always store as unixtime.
+        """
+        return float(calendar.timegm(utc.utctimetuple())) + \
+            (float(utc.microsecond) / 1000000.0)
+
+    def _float_to_dt(self, when):
+        """Float to datatime, with microseconds.
+        """
+        integer = int(when)
+        daittyme = datetime.datetime.utcfromtimestamp(integer)
+        micro = int((when - float(integer)) * 1000000.0) + 1
+        return daittyme.replace(microsecond=micro)
+
+    def _make_trait(self, trait_model, event):
+        """Make a new Trait from a Trait model.
+
+        Doesn't flush or add to session.
+        """
+        name = self._get_unique_name(trait_model.name)
+        value_map = {api_models.Trait.TEXT_TYPE: 't_string',
+                     api_models.Trait.FLOAT_TYPE: 't_float',
+                     api_models.Trait.INT_TYPE: 't_int',
+                     api_models.Trait.DATETIME_TYPE: 't_datetime'}
+        values = {'t_string': None, 't_float': None,
+                  't_int': None, 't_datetime': None}
+        value = trait_model.value
+        if trait_model.dtype == api_models.Trait.DATETIME_TYPE:
+            value = self._dt_to_float(value)
+        values[value_map[trait_model.dtype]] = value
+        return Trait(name, event, trait_model.dtype, **values)
+
+    def _record_event(self, event_model):
+        """Store a single Event, including related Traits.
+        """
+        unique = self._get_unique_name(event_model.event_name)
+
+        event = Event(unique, event_model.when)
+        self.session.add(event)
+
+        new_traits = []
+        if event_model.traits:
+            for trait in event_model.traits:
+                t = self._make_trait(trait, event)
+                self.session.add(t)
+                new_traits.append(t)
+
+        # Note: we don't flush here, explicitly (unless a new uniquename
+        # does it). Otherwise, just wait until all the Events are staged.
+        return (event, new_traits)
+
+    def record_events(self, event_models):
+        """Write the events to SQL database via sqlalchemy.
+
+        :param event_models: a list of model.Event objects.
+
+        Flush when they're all added, unless new UniqueNames are
+        added along the way.
+        """
+        events = []
+        for event_model in event_models:
+            events.append(self._record_event(event_model))
+
+        self.session.flush()
+        return events
+
+    def get_events(self, event_filter, period):
+        """Return an iterable of model.Event objects.
+
+        :param event_filter: EventFilter instance
+        :param period: Tuple of UTC datetime ranges for results.
+        """
+        return []

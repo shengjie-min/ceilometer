@@ -511,6 +511,21 @@ class Connection(base.Connection):
         """
         raise NotImplementedError('Alarms not implemented')
 
+    def record_events(self, events):
+        """Write the events to SQL database via sqlalchemy.
+
+        :param events: a list of model.Event objects.
+        """
+        pass
+
+    def get_events(self, event_fitler, period):
+        """Return an iterable of model.Event objects.
+
+        :param event_filter: EventFilter instance
+        :param period: Tuple of UTC datetime ranges for results.
+        """
+        return []
+
 
 ###############
 # This is a very crude version of "in-memory HBase", which implements just

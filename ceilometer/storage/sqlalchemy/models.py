@@ -23,8 +23,9 @@ import urlparse
 
 from oslo.config import cfg
 from sqlalchemy import Column, Integer, String, Table, ForeignKey, DateTime, \
-    Float
+    Float, Numeric
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import backref
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import TypeDecorator, VARCHAR
 
@@ -139,3 +140,71 @@ class Resource(Base):
     user_id = Column(String(255), ForeignKey('user.id'))
     project_id = Column(String(255), ForeignKey('project.id'))
     meters = relationship("Meter", backref='resource')
+
+
+class UniqueName(Base):
+    """Key names should only be stored once.
+    """
+    __tablename__ = 'unique_name'
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+    id = Column(Integer, primary_key=True)
+    key = Column(String(32), index=True, unique=True)
+
+    def __init__(self, key):
+        self.key = key
+
+    def __repr__(self):
+        return "<UniqueName: %s>" % self.key
+
+
+class Event(Base):
+    __tablename__ = 'event'
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+
+    id = Column(Integer, primary_key=True)
+    when = Column(DateTime, index=True)
+
+    unique_name_id = Column(Integer, ForeignKey('unique_name.id'))
+    unique_name = relationship("UniqueName", backref=backref('unique_name',
+                               order_by=id))
+
+    def __init__(self, event, when):
+        self.unique_name = event
+        self.when = when
+
+    def __repr__(self):
+        return "<Event %d('Event: %s, When: %s')>" % \
+               (self.id, self.unique_name, self.when)
+
+
+class Trait(Base):
+    __tablename__ = 'trait'
+    __table_args__ = {'mysql_engine': 'InnoDB'}
+
+    id = Column(Integer, primary_key=True)
+
+    name_id = Column(Integer, ForeignKey('unique_name.id'))
+    name = relationship("UniqueName", backref=backref('name', order_by=id))
+
+    t_type = Column(Integer, index=True)
+    t_string = Column(String(32), nullable=True, default=None, index=True)
+    t_float = Column(Numeric, nullable=True, default=None, index=True)
+    t_int = Column(Integer, nullable=True, default=None, index=True)
+    t_datetime = Column(Float, nullable=True, default=None, index=True)
+
+    event_id = Column(Integer, ForeignKey('event.id'))
+    event = relationship("Event", backref=backref('event', order_by=id))
+
+    def __init__(self, name, event, t_type, t_string=None, t_float=None,
+                 t_int=None, t_datetime=None):
+        self.name = name
+        self.t_type = t_type
+        self.t_string = t_string
+        self.t_float = t_float
+        self.t_int = t_int
+        self.t_datetime = t_datetime
+        self.event = event
+
+    def __repr__(self):
+        return "<Trait(%s) %d=%s/%s/%s on %s>" % (self.name, self.t_type,
+               self.t_string, self.t_float, self.t_int, self.event)
